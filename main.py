@@ -2,7 +2,7 @@
 import discord
 from discord.ext import commands
 
-DISCORD_TOKEN = 'ODA4OTY2OTE3NDcyNzgwMzIy.YCOPJw.HVquf8tNRAOvKZuR05pszKcJ4UM'
+DISCORD_TOKEN = ""
 COMMAND_PREFIX = '$'
 
 class Bot(commands.Bot):
