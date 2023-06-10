@@ -1,0 +1,7 @@
+version: '3'
+services:
+  notebook:
+    build: .
+    environment: 
+      DISCORD_TOKEN: ${DISCORD_TOKEN}
+    restart: always
