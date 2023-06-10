@@ -33,10 +33,6 @@ class Voice(commands.Cog):
             config = json.load(file)
 
         return config.get('server_emoji_list', {})
-    
-    @commands.slash_command(name="first_slash", guild_ids=[747509186228650015])
-    async def first_slash(ctx): 
-        await ctx.respond("You executed the slash command!")
 
     @commands.command()
     async def join(self, ctx):

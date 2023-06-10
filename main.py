@@ -2,7 +2,11 @@
 import discord
 from discord.ext import commands
 
-DISCORD_TOKEN = ""
+import os
+
+# import discord token from environment variable
+DISCORD_TOKEN = os.environ.get('DISCORD_TOKEN')
+
 COMMAND_PREFIX = '$'
 
 class Bot(commands.Bot):

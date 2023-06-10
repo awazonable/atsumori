@@ -11,7 +11,8 @@ RUN apk update && apk add --no-cache \
     bzip2-dev \
     libffi-dev \
     zlib-dev \
-    sqlite-dev
+    sqlite-dev \
+    opus-dev
 
 # Set the working directory
 WORKDIR /app
@@ -25,8 +26,8 @@ COPY requirements.txt .
 # Install python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your app's source code from your host to your image filesystem.
+# Copy application source code and .env file
 COPY . .
 
-# Run py background
-CMD ["python3.10", "main.py"]
+# Set command to run Python in the background
+CMD ["python3.10", "-u", "main.py"]
