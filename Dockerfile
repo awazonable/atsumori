@@ -28,7 +28,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source code without .env file
 COPY *.py .
-COPY sounds .
+RUN mkdir sounds
+COPY sounds sounds
 COPY config.json .
 
 # Set command to run Python in the background
