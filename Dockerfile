@@ -26,8 +26,10 @@ COPY requirements.txt .
 # Install python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application source code and .env file
-COPY . .
+# Copy application source code without .env file
+COPY *.py .
+COPY sounds .
+COPY config.json .
 
 # Set command to run Python in the background
 CMD ["python3.10", "-u", "main.py"]
