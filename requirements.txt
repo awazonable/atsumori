@@ -1,4 +1,2 @@
-discord.py[voice]<3,>=2.2.3
-py-cord
-emoji<2,>=1.4.2
-PyNaCl<2,>=1.5.0
+# 熱盛BOT - Discord Voice BOT (discord.py 2.x + ボイス対応)
+discord.py[voice]>=2.0.0,<3.0.0
