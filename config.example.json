@@ -1,0 +1,14 @@
+{
+  "sounds_base": "/app",
+  "emoji_list": {
+    "beer_mug": [
+      { "source": "sounds/beer.wav", "freq": 100 }
+    ]
+  },
+  "server_emoji_list": {
+    "atsumori": [
+      { "source": "sounds/atsumori_std.wav", "freq": 80 },
+      { "source": "sounds/atsumori_long.wav", "freq": 20 }
+    ]
+  }
+}
