@@ -76,11 +76,20 @@ python main.py
 | `/join` | 実行者が参加中のボイスチャンネルに BOT が参加する |
 | `/leave` | BOT が参加中のボイスチャンネルから退出する |
 | `/atsumori` | 熱盛の音声を再生する（参加中 or 実行者の VC に自動参加して再生） |
+| `/show_all_emojis` | 反応する絵文字一覧をチャットに投稿する |
+| `/reaction_all_on` | 全チャンネルで絵文字→リアクションを ON にする |
+| `/reaction_all_off` | 全チャンネルで絵文字→リアクションを OFF にする |
+| `/reaction_channel` | 指定チャンネルでのみ絵文字→リアクションを ON（他は OFF） |
+| `/upload_files` | 添付した音声（mp3/wav）を名前付きで保存する |
+| `/show_files` | このサーバーでアップロードした音声一覧を表示する |
+| `/set_reaction_files` | 指定したリアクションでアップロード音声を再生するように紐付ける |
+| `/delete_files` | アップロードした音声を削除する |
 
 開発用サーバーに登録している場合は、`.env` に `DEV_GUILD_ID` を設定すると Slash コマンドがそのサーバーに即時反映される。
 
 ### 絵文字リアクション
 
-- メッセージに ♨️ やサーバー絵文字 `atsumori` などでリアクションすると、BOT が VC に参加（条件を満たす場合）し、熱盛を再生する。
-- `config.json` の `emoji_list` / `server_emoji_list` で、絵文字と再生する音声ファイルを紐付けられる。仕様は `spec.md` を参照。
+- メッセージに ♨️ やサーバー絵文字 `atsumori`、または `config.json` の `emoji_list` / `server_emoji_list` で紐付けた絵文字でリアクションすると、BOT が VC に参加（条件を満たす場合）し、対応する音声を再生する。
+- アップロード音声（`/set_reaction_files` で紐付けた絵文字）にも反応する。人間・他 BOT・自 BOT のリアクションでトリガーする（自 BOT が自 BOT の投稿に付けたリアクションのみトリガーしない）。
+- チャンネル単位で ON/OFF 可能（`/reaction_all_on`, `/reaction_all_off`, `/reaction_channel`）。仕様は `spec.md` を参照。
 
