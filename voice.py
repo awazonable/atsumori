@@ -272,6 +272,30 @@ class Voice(commands.Cog):
             logger.info("[op] slash_atsumori | play_atsumori (existing vc) guild_id=%s", vc.guild.id)
             self.play_atsumori(vc)
 
+    @app_commands.command(name="help", description="コマンドの使い方を表示する（実行した本人にだけ表示）")
+    async def slash_help(self, interaction: discord.Interaction):
+        lines = [
+            "**Slash コマンド一覧**",
+            "",
+            "`/join` — 実行者が参加中のボイスチャンネルに BOT が参加する",
+            "`/leave` — BOT が参加中のボイスチャンネルから退出する",
+            "`/atsumori` — 熱盛の音声を再生する（参加中 or 実行者の VC に自動参加して再生）",
+            "`/show_all_emojis` — 反応する絵文字一覧をチャットに投稿する",
+            "`/reaction_all_on` — 全チャンネルで絵文字→リアクションを ON にする",
+            "`/reaction_all_off` — 全チャンネルで絵文字→リアクションを OFF にする",
+            "`/reaction_channel` — 指定チャンネルでのみ絵文字→リアクションを ON（他は OFF）",
+            "`/upload_files` — 添付した音声（mp3/wav）を名前付きで保存する",
+            "`/show_files` — このサーバーでアップロードした音声一覧を表示する",
+            "`/set_reaction_files` — 指定したリアクションでアップロード音声を再生するように紐付ける",
+            "`/delete_files` — アップロードした音声を削除する",
+            "",
+            "絵文字でリアクションすると対応する音声を VC で再生します。チャンネル単位で ON/OFF 可能。",
+        ]
+        text = "\n".join(lines)
+        if len(text) > 2000:
+            text = text[:1997] + "..."
+        await interaction.response.send_message(text, ephemeral=True)
+
     def _format_reaction_key_display(self, reaction_key: str, guild: discord.Guild | None) -> str:
         """リアクションキーを一覧表示用に整形（絵文字 + `:key:` など）。"""
         if not reaction_key.isascii() and len(reaction_key) <= 2:
