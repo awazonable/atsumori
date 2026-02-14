@@ -8,7 +8,8 @@ a Discord bot to emit atsumori
 | 変数 | 説明 |
 |------|------|
 | `DISCORD_TOKEN` | Discord Developer Portal で発行した Bot トークン（必須） |
-| `DEV_GUILD_ID` | 開発用サーバーのギルド ID（指定時は Slash コマンドをそのサーバーに即時反映） |
+| `DEV_GUILD_ID` | 開発用サーバーのギルド ID（**開発モード**時のみ、そのサーバーにだけ Slash コマンドを即時反映） |
+| `DEV_MODE` | `1` / `true` / `yes` のとき開発モード。`DEV_GUILD_ID` にだけコマンド同期。未設定時は全ギルドにグローバル同期。 |
 
 ## 開発サーバーへの招待（必要な権限）
 
@@ -77,7 +78,7 @@ python main.py
 | `/leave` | BOT が参加中のボイスチャンネルから退出する |
 | `/atsumori` | 熱盛の音声を再生する（参加中 or 実行者の VC に自動参加して再生） |
 
-開発用サーバーに登録している場合は、`.env` に `DEV_GUILD_ID` を設定すると Slash コマンドがそのサーバーに即時反映される。
+**開発モード**（`python main.py --dev` または `DEV_MODE=1`）で起動し、`.env` に `DEV_GUILD_ID` を設定すると、Slash コマンドがそのサーバーにだけ即時反映される。通常起動時はコマンドは全ギルドにグローバル同期される。
 
 ### 絵文字リアクション
 
