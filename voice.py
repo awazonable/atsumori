@@ -8,6 +8,7 @@ import os
 import random
 import re
 import time
+from datetime import datetime, timezone
 
 from emoji import demojize, emojize
 
@@ -16,6 +17,7 @@ from discord import app_commands
 from discord.ext import commands
 
 import reaction_db
+import upload_store
 
 CONFIG_PATH = "config.json"
 SOUNDS_BASE_DEFAULT = "/app"  # Docker の WORKDIR 想定
@@ -43,6 +45,7 @@ class Voice(commands.Cog):
         self._message_cache_ttl = 30.0
         self._message_cache_max = 100
         reaction_db.init()
+        upload_store.init()
 
     def _resolve_path(self, path: str) -> str:
         if os.path.isabs(path):
@@ -269,6 +272,22 @@ class Voice(commands.Cog):
             logger.info("[op] slash_atsumori | play_atsumori (existing vc) guild_id=%s", vc.guild.id)
             self.play_atsumori(vc)
 
+    def _format_reaction_key_display(self, reaction_key: str, guild: discord.Guild | None) -> str:
+        """リアクションキーを一覧表示用に整形（絵文字 + `:key:` など）。"""
+        if not reaction_key.isascii() and len(reaction_key) <= 2:
+            return f"{reaction_key} `{reaction_key}`"
+        try:
+            char = emojize(f":{reaction_key}:", language="alias")
+            if char and char != f":{reaction_key}:":
+                return f"{char} `:{reaction_key}:`"
+        except Exception:
+            pass
+        if guild:
+            for em in guild.emojis:
+                if em.name == reaction_key:
+                    return f"{em} `:{reaction_key}:`"
+        return f"`:{reaction_key}:`"
+
     @app_commands.command(name="show_all_emojis", description="反応する絵文字をすべてチャットに投稿する")
     async def slash_show_all_emojis(self, interaction: discord.Interaction):
         lines = ["**反応する絵文字一覧**", ""]
@@ -301,6 +320,18 @@ class Voice(commands.Cog):
                     lines.append(f"{str(custom)} `:{name}:`")
                 else:
                     lines.append(f"`:{name}:`（このサーバーに未登録）")
+        lines.append("")
+        lines.append("**アップロード音声（独自）**")
+        if interaction.guild:
+            custom_pairs = upload_store.list_all_reaction_uploads(interaction.guild_id)
+            if not custom_pairs:
+                lines.append("（なし）")
+            else:
+                for rk, upload_name in sorted(custom_pairs, key=lambda x: (x[0], x[1])):
+                    disp = self._format_reaction_key_display(rk, interaction.guild)
+                    lines.append(f"{disp} → `{upload_name}`")
+        else:
+            lines.append("（なし）")
         text = "\n".join(lines)
         if len(text) > 2000:
             text = text[:1997] + "..."
@@ -338,6 +369,141 @@ class Voice(commands.Cog):
             return
         reaction_db.set_channel_on(interaction.guild_id, ch.id)
         await interaction.response.send_message(f"「#{ch.name}」で絵文字リアクションを ON にしました。（他チャンネルは OFF）", ephemeral=True)
+
+    # --- ユーザーアップロード音声（実験） ---
+
+    @app_commands.command(name="upload_files", description="添付した音声ファイルを name で保存する（mp3/wav）")
+    @app_commands.describe(name="保存する名前（英数字・アンダースコア推奨）")
+    async def slash_upload(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        file: discord.Attachment,
+    ):
+        if not interaction.guild:
+            await interaction.response.send_message("サーバー内で実行してください。", ephemeral=True)
+            return
+        ext = (file.filename or "").split(".")[-1].lower()
+        if ext not in upload_store.ALLOWED_EXT:
+            await interaction.response.send_message(
+                f"音声ファイル（.mp3 または .wav）を添付してください。現在: {file.filename or 'なし'}",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            content = await file.read()
+        except Exception as e:
+            await interaction.followup.send(f"ファイルの取得に失敗しました: {e}", ephemeral=True)
+            return
+        try:
+            safe_name = upload_store.save_upload(
+                interaction.guild_id, name, content, ext, uploaded_by=interaction.user.id
+            )
+            await interaction.followup.send(f"音声を `{safe_name}` として保存しました。", ephemeral=True)
+        except ValueError as e:
+            await interaction.followup.send(str(e), ephemeral=True)
+
+    async def _upload_name_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        if not interaction.guild_id:
+            return []
+        names = upload_store.list_uploads(interaction.guild_id)
+        if not current:
+            return [app_commands.Choice(name=n, value=n) for n in names[:25]]
+        cur = current.lower()
+        return [app_commands.Choice(name=n, value=n) for n in names if cur in n.lower()][:25]
+
+    @app_commands.command(name="set_reaction_files", description="指定したリアクションでアップロード音声を再生する")
+    @app_commands.describe(
+        name="アップロードした音声の名前",
+        reaction="リアクション（絵文字または :name: 形式）",
+    )
+    @app_commands.autocomplete(name=_upload_name_autocomplete)
+    async def slash_set_reaction(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        reaction: str,
+    ):
+        if not interaction.guild:
+            await interaction.response.send_message("サーバー内で実行してください。", ephemeral=True)
+            return
+        path = upload_store.get_upload_path(interaction.guild_id, name)
+        if not path or not path.is_file():
+            await interaction.response.send_message(f"`{name}` という音声が見つかりません。`/show_files` で一覧を確認してください。", ephemeral=True)
+            return
+        reaction_key = reaction.strip()
+        if reaction_key.startswith(":") and reaction_key.endswith(":"):
+            reaction_key = reaction_key[1:-1]
+        if not reaction_key:
+            await interaction.response.send_message("リアクションを指定してください（絵文字または :name:）。", ephemeral=True)
+            return
+        if len(reaction_key) > 1 and not reaction_key.isascii():
+            reaction_key = demojize(reaction_key, delimiters=("", "")).strip(":")
+        upload_store.set_reaction_upload(interaction.guild_id, reaction_key, name)
+        await interaction.response.send_message(f"リアクション `{reaction_key}` で `{name}` が再生されるように設定しました。", ephemeral=True)
+
+    @app_commands.command(name="show_files", description="このサーバーでアップロードした音声一覧を表示する")
+    async def slash_show_files(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message("サーバー内で実行してください。", ephemeral=True)
+            return
+        rows = upload_store.list_uploads_with_meta(interaction.guild_id)
+        if not rows:
+            await interaction.response.send_message("アップロードされた音声はありません。`/upload_files` で追加できます。", ephemeral=True)
+            return
+        lines = ["**アップロード音声一覧**"]
+        for name, user_id, uploaded_at in rows:
+            uploader = "不明"
+            if user_id:
+                member = interaction.guild.get_member(user_id)
+                uploader = member.display_name if member else str(user_id)
+            date_str = "不明"
+            if uploaded_at:
+                dt = datetime.fromtimestamp(uploaded_at, tz=timezone.utc)
+                date_str = dt.strftime("%Y/%m/%d %H:%M")
+            reaction_keys = upload_store.list_reaction_keys_for_upload(interaction.guild_id, name)
+            emoji_parts = []
+            for rk in reaction_keys:
+                if not rk.isascii() and len(rk) <= 2:
+                    emoji_parts.append(rk)
+                else:
+                    try:
+                        ch = emojize(f":{rk}:", language="alias")
+                        if ch and ch != f":{rk}:":
+                            emoji_parts.append(ch)
+                        else:
+                            emoji_parts.append(f"`:{rk}:`")
+                    except Exception:
+                        emoji_parts.append(f"`:{rk}:`")
+                    if interaction.guild:
+                        for em in interaction.guild.emojis:
+                            if em.name == rk:
+                                emoji_parts[-1] = str(em)
+                                break
+            reaction_str = " ".join(emoji_parts) if emoji_parts else "—"
+            lines.append(f"・`{name}` — {uploader}（{date_str}) {reaction_str}")
+        text = "\n".join(lines)
+        if len(text) > 2000:
+            text = text[:1997] + "..."
+        await interaction.response.send_message(text)
+
+    @app_commands.command(name="delete_files", description="アップロードした音声を削除する")
+    @app_commands.describe(name="削除する音声の名前")
+    @app_commands.autocomplete(name=_upload_name_autocomplete)
+    async def slash_delete_files(self, interaction: discord.Interaction, name: str):
+        if not interaction.guild:
+            await interaction.response.send_message("サーバー内で実行してください。", ephemeral=True)
+            return
+        try:
+            upload_store.delete_upload(interaction.guild_id, name)
+            await interaction.response.send_message(f"`{name}` を削除しました。", ephemeral=True)
+        except ValueError as e:
+            await interaction.response.send_message(str(e), ephemeral=True)
 
     # --- 従来のプレフィックスコマンド（互換のため残す） ---
 
@@ -380,6 +546,12 @@ class Voice(commands.Cog):
                     for em in message.guild.emojis:
                         if em.name == x:
                             await message.add_reaction(em)
+                # アップロード音声に設定されたサーバー絵文字が本文に含まれる場合もリアクション
+                if upload_store.get_reaction_upload(message.guild.id, x):
+                    for em in message.guild.emojis:
+                        if em.name == x:
+                            await message.add_reaction(em)
+                            break
             if random.randint(1, 100) <= 10:
                 atsumori_emoji = "♨️"
                 for em in message.guild.emojis:
@@ -387,6 +559,49 @@ class Voice(commands.Cog):
                         atsumori_emoji = em
                         break
                 await message.add_reaction(atsumori_emoji)
+            content_raw = message.content or ""
+            content_lower = content_raw.lower().strip()
+            # アップロード名が本文に単語として含まれるとき、紐付いたリアクションを付ける（例: "cat" → 🐱）
+            for upload_name in upload_store.list_uploads(message.guild.id):
+                pattern = r"\b" + re.escape(upload_name) + r"\b"
+                if not re.search(pattern, content_lower, re.IGNORECASE) and content_lower != upload_name.lower():
+                    continue
+                for rk in upload_store.list_reaction_keys_for_upload(message.guild.id, upload_name):
+                    try:
+                        if not rk.isascii() and len(rk) <= 2:
+                            await message.add_reaction(rk)
+                            break
+                        emoji_char = emojize(":" + rk + ":", language="alias")
+                        if emoji_char and emoji_char != ":" + rk + ":":
+                            await message.add_reaction(emoji_char)
+                            break
+                        for em in message.guild.emojis:
+                            if em.name == rk:
+                                await message.add_reaction(em)
+                                break
+                    except (discord.HTTPException, ValueError):
+                        pass
+            # 本文にアップロード設定の絵文字（Unicode や :name:）が含まれるときもリアクションを付ける
+            for rk, _ in upload_store.list_all_reaction_uploads(message.guild.id):
+                try:
+                    if not rk.isascii() and len(rk) <= 2:
+                        if rk in content_raw:
+                            await message.add_reaction(rk)
+                    else:
+                        colon_name = ":" + rk + ":"
+                        if colon_name in content_raw:
+                            try:
+                                ch = emojize(colon_name, language="alias")
+                                if ch and ch != colon_name:
+                                    await message.add_reaction(ch)
+                            except Exception:
+                                pass
+                            for em in message.guild.emojis:
+                                if em.name == rk:
+                                    await message.add_reaction(em)
+                                    break
+                except (discord.HTTPException, ValueError):
+                    pass
         except Exception as e:
             logger.exception("on_message: %s", e)
 
@@ -419,6 +634,15 @@ class Voice(commands.Cog):
             self.play_atsumori(vc)
             return
         key_unicode = demojize(str(emoji), delimiters=("", "")).strip(":")
+        # ユーザーアップロード音声（/set_reaction_files で紐付けたもの）を優先
+        for rk in (key_unicode, emoji_name):
+            upload_name = upload_store.get_reaction_upload(vc.guild.id, rk)
+            if upload_name:
+                path = upload_store.get_upload_path(vc.guild.id, upload_name)
+                if path and path.is_file():
+                    logger.info("[op] reaction | emoji=%s → upload=%s guild_id=%s", emoji_name, upload_name, vc.guild.id)
+                    self.play_single(vc, str(path))
+                    return
         if key_unicode in self._emoji_list:
             path = self._pick_source_from_list(self._emoji_list[key_unicode])
             logger.info("[op] reaction | emoji=%s → file=%s guild_id=%s", emoji_name or key_unicode, path, vc.guild.id)
@@ -432,15 +656,16 @@ class Voice(commands.Cog):
     @commands.Cog.listener(name="on_raw_reaction_add")
     async def on_reaction_add(self, payload: discord.RawReactionActionEvent):
         try:
-            if payload.user_id == self.bot.user.id:
-                return
-            logger.info("[op] reaction_add | message_id=%s user_id=%s channel_id=%s", payload.message_id, payload.user_id, payload.channel_id)
             channel = self.bot.get_channel(payload.channel_id)
             if not channel or not isinstance(channel, discord.TextChannel):
                 return
             message = await self._get_message_cached(channel, payload.message_id)
             if not message:
                 return
+            # このBotが自分の投稿（show_all_emojis／show_files 等）にリアクションしたときだけトリガーしない
+            if payload.user_id == self.bot.user.id and message.author.id == self.bot.user.id:
+                return
+            logger.info("[op] reaction_add | message_id=%s user_id=%s channel_id=%s", payload.message_id, payload.user_id, payload.channel_id)
             await self._on_reaction_trigger(message, payload.user_id, payload.emoji)
         except Exception as e:
             logger.exception("[op] reaction_add | error: %s", e)
@@ -448,15 +673,15 @@ class Voice(commands.Cog):
     @commands.Cog.listener(name="on_raw_reaction_remove")
     async def on_reaction_remove(self, payload: discord.RawReactionActionEvent):
         try:
-            if payload.user_id == self.bot.user.id:
-                return
-            logger.info("[op] reaction_remove | message_id=%s user_id=%s channel_id=%s", payload.message_id, payload.user_id, payload.channel_id)
             channel = self.bot.get_channel(payload.channel_id)
             if not channel or not isinstance(channel, discord.TextChannel):
                 return
             message = await self._get_message_cached(channel, payload.message_id)
             if not message:
                 return
+            if payload.user_id == self.bot.user.id and message.author.id == self.bot.user.id:
+                return
+            logger.info("[op] reaction_remove | message_id=%s user_id=%s channel_id=%s", payload.message_id, payload.user_id, payload.channel_id)
             await self._on_reaction_trigger(message, payload.user_id, payload.emoji)
         except Exception as e:
             logger.exception("[op] reaction_remove | error: %s", e)
