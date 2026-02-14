@@ -163,4 +163,5 @@ cython_debug/
 # MY SOURCE FILES
 sounds/
 config.json
+reaction_settings.db
 .vscode/

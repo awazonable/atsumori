@@ -15,6 +15,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+import reaction_db
+
 CONFIG_PATH = "config.json"
 SOUNDS_BASE_DEFAULT = "/app"  # Docker の WORKDIR 想定
 
@@ -40,6 +42,7 @@ class Voice(commands.Cog):
         self._message_cache: dict[tuple[int, int], tuple[discord.Message, float]] = {}
         self._message_cache_ttl = 30.0
         self._message_cache_max = 100
+        reaction_db.init()
 
     def _resolve_path(self, path: str) -> str:
         if os.path.isabs(path):
@@ -303,6 +306,39 @@ class Voice(commands.Cog):
             text = text[:1997] + "..."
         await interaction.response.send_message(text)
 
+    @app_commands.command(name="reaction_all_on", description="すべての見えるテキストチャンネルで絵文字→リアクションを ON にする")
+    async def slash_reaction_all_on(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message("サーバー内で実行してください。", ephemeral=True)
+            return
+        reaction_db.set_all_on(interaction.guild_id)
+        await interaction.response.send_message("このサーバーの全チャンネルで絵文字リアクションを ON にしました。", ephemeral=True)
+
+    @app_commands.command(name="reaction_all_off", description="すべてのチャンネルで絵文字→リアクションを OFF にする")
+    async def slash_reaction_all_off(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message("サーバー内で実行してください。", ephemeral=True)
+            return
+        reaction_db.set_all_off(interaction.guild_id)
+        await interaction.response.send_message("このサーバーの全チャンネルで絵文字リアクションを OFF にしました。", ephemeral=True)
+
+    @app_commands.command(name="reaction_channel", description="指定チャンネルでのみ絵文字→リアクションを ON にする（他は OFF）")
+    @app_commands.describe(channel="リアクションを有効にするチャンネル（省略時はこのチャンネル）")
+    async def slash_reaction_channel(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel | None = None,
+    ):
+        if not interaction.guild:
+            await interaction.response.send_message("サーバー内で実行してください。", ephemeral=True)
+            return
+        ch = channel or interaction.channel
+        if not isinstance(ch, discord.TextChannel):
+            await interaction.response.send_message("テキストチャンネルを指定してください。", ephemeral=True)
+            return
+        reaction_db.set_channel_on(interaction.guild_id, ch.id)
+        await interaction.response.send_message(f"「#{ch.name}」で絵文字リアクションを ON にしました。（他チャンネルは OFF）", ephemeral=True)
+
     # --- 従来のプレフィックスコマンド（互換のため残す） ---
 
     @commands.command()
@@ -331,6 +367,8 @@ class Voice(commands.Cog):
     @commands.Cog.listener(name="on_message")
     async def on_message_atsumori(self, message: discord.Message):
         if message.author.bot or not message.guild:
+            return
+        if not reaction_db.is_reaction_enabled(message.guild.id, message.channel.id):
             return
         try:
             text = demojize(message.content or "", delimiters=("<:", ":>"))
