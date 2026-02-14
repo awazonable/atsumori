@@ -1,7 +1,13 @@
-version: '3'
 services:
-  notebook:
+  bot:
     build: .
-    environment: 
+    environment:
       DISCORD_TOKEN: ${DISCORD_TOKEN}
+      DEV_GUILD_ID: ${DEV_GUILD_ID:-}
+      UPLOAD_STORE_DIR: /app/data
+    volumes:
+      - upload_data:/app/data
     restart: always
+
+volumes:
+  upload_data:
