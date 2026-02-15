@@ -284,6 +284,7 @@ class Voice(commands.Cog):
             "`/reaction_all_on` — 全チャンネルで絵文字→リアクションを ON にする",
             "`/reaction_all_off` — 全チャンネルで絵文字→リアクションを OFF にする",
             "`/reaction_channel` — 指定チャンネルでのみ絵文字→リアクションを ON（他は OFF）",
+            "`/show_reaction_channels` — リアクション ON のチャンネル一覧を表示する",
             "`/upload_files` — 添付した音声（mp3/wav）を名前付きで保存する",
             "`/show_files` — このサーバーでアップロードした音声一覧を表示する",
             "`/set_reaction_files` — 指定したリアクションでアップロード音声を再生するように紐付ける",
@@ -393,6 +394,25 @@ class Voice(commands.Cog):
             return
         reaction_db.set_channel_on(interaction.guild_id, ch.id)
         await interaction.response.send_message(f"「#{ch.name}」で絵文字リアクションを ON にしました。（他チャンネルは OFF）", ephemeral=True)
+
+    @app_commands.command(name="show_reaction_channels", description="リアクション ON のチャンネル一覧を表示する")
+    async def slash_show_reaction_channels(self, interaction: discord.Interaction):
+        if not interaction.guild:
+            await interaction.response.send_message("サーバー内で実行してください。", ephemeral=True)
+            return
+        channels = reaction_db.get_enabled_channels(interaction.guild_id)
+        if channels is None:
+            await interaction.response.send_message("**リアクション ON のチャンネル**\n全チャンネルで ON です。", ephemeral=True)
+            return
+        if not channels:
+            await interaction.response.send_message("**リアクション ON のチャンネル**\n全チャンネルで OFF です。", ephemeral=True)
+            return
+        lines = ["**リアクション ON のチャンネル**", ""]
+        for cid in channels:
+            ch = interaction.guild.get_channel(cid)
+            name = f"#{ch.name}" if ch else f"（ID: {cid}）"
+            lines.append(f"・{name}")
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     # --- ユーザーアップロード音声（実験） ---
 

@@ -82,6 +82,7 @@ python main.py
 | `/reaction_all_on` | 全チャンネルで絵文字→リアクションを ON にする |
 | `/reaction_all_off` | 全チャンネルで絵文字→リアクションを OFF にする |
 | `/reaction_channel` | 指定チャンネルでのみ絵文字→リアクションを ON（他は OFF） |
+| `/show_reaction_channels` | リアクション ON のチャンネル一覧を表示する |
 | `/upload_files` | 添付した音声（mp3/wav）を名前付きで保存する |
 | `/show_files` | このサーバーでアップロードした音声一覧を表示する |
 | `/set_reaction_files` | 指定したリアクションでアップロード音声を再生するように紐付ける |
