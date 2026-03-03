@@ -22,10 +22,10 @@
 
 ## 4. 是正タスク
 
-- [ ] **4.1** `requirements.txt` の `discord.py[voice]` を DAVE 対応リリースに更新する。  
-  - [discord.py Releases](https://github.com/Rapptz/discord.py/releases) / [Changelog](https://discordpy.readthedocs.io/en/stable/whats_new.html) で DAVE（PR #10300）が含まれるバージョンを確認し、そのバージョン以上（例: `>=2.5.0` など）を指定する。
-- [ ] **4.2** アップグレード後、既存のボイス接続・再生フロー（`voice.py`）がそのまま動作するか確認する。  
-  - 必要に応じて `voice_state_update` で Close Code 4017 のログ出力を追加し、切断原因の切り分けをしやすくする。
+- [x] **4.1** `requirements.txt` の `discord.py[voice]` を DAVE 対応リリースに更新する。  
+  - **実施済み:** `discord.py[voice]>=2.7.0,<3.0.0` に変更（v2.7.0 で DAVE 対応 [Changelog](https://discordpy.readthedocs.io/en/stable/whats_new.html)）。
+- [x] **4.2** アップグレード後、既存のボイス接続・再生フロー（`voice.py`）がそのまま動作するか確認する。  
+  - **実施済み:** `on_voice_state_update` のコメントに 4017（DAVE 非対応での切断）を追記し、切断原因の切り分けをしやすくした。
 - [ ] **4.3** 開発環境・本番環境で以下を手動または自動でテストする。  
   - `/join` → BOT が VC に参加し、切断されないこと。  
   - `/atsumori` および絵文字リアクションで音声が再生されること。  
@@ -34,7 +34,7 @@
 ## 5. 検証方法
 
 1. **依存更新**  
-   `python -m pip install -r requirements.txt -U` で discord.py を更新し、`python -m pip show discord.py` でバージョン確認。
+   venv を有効化したうえで `python -m pip install -r requirements.txt -U` を実行し、`python -m pip show discord.py` で **2.7.0 以上** であることを確認する。
 2. **動作確認**  
    - テスト用 Guild でボイスチャンネルを作成し、BOT を `/join` で参加させる。  
    - 数秒待っても 4017 で切断されないこと、`/atsumori` で音声が流れることを確認。  
