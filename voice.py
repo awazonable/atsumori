@@ -737,7 +737,8 @@ class Voice(commands.Cog):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ):
-        # BOT 自身が VC から外れたとき（4006 等）をログで追えるようにする
+        # BOT 自身が VC から外れたとき（4006 / 4017 等）をログで追えるようにする
+        # 4017 = DAVE 非対応クライアントとしてサーバーから切断（3月以降必須）
         if member.id != self.bot.user.id:
             return
         if before.channel and not after.channel:
