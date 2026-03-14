@@ -52,6 +52,30 @@ class Voice(commands.Cog):
             return path
         return os.path.join(self._sounds_base, path)
 
+    @staticmethod
+    def _normalize_emoji_text(s: str) -> str:
+        """Variation selector (U+FE0F) を除いて比較用に正規化する。"""
+        return s.replace("\ufe0f", "")
+
+    def _content_contains_reaction(self, content_raw: str, rk: str) -> bool:
+        """
+        本文に reaction_key が含まれるか。後方互換のため
+        1) rk がそのまま含まれる 2) rk が ASCII alias なら emojize した文字が含まれる
+        3) variation selector の有無を吸収して比較する。
+        """
+        if not rk:
+            return False
+        if rk in content_raw:
+            return True
+        if rk.isascii():
+            emoji_char = emojize(f":{rk}:", language="alias")
+            if emoji_char and emoji_char != f":{rk}:":
+                if emoji_char in content_raw:
+                    return True
+                if self._normalize_emoji_text(emoji_char) in self._normalize_emoji_text(content_raw):
+                    return True
+        return False
+
     # --- Voice 接続管理（SPEC §4） ---
 
     def get_guild_vc(self, guild: discord.Guild):
@@ -299,7 +323,7 @@ class Voice(commands.Cog):
 
     def _format_reaction_key_display(self, reaction_key: str, guild: discord.Guild | None) -> str:
         """リアクションキーを一覧表示用に整形（絵文字 + `:key:` など）。"""
-        if not reaction_key.isascii() and len(reaction_key) <= 2:
+        if not reaction_key.isascii():
             return f"{reaction_key} `{reaction_key}`"
         try:
             char = emojize(f":{reaction_key}:", language="alias")
@@ -482,12 +506,15 @@ class Voice(commands.Cog):
             return
         reaction_key = reaction.strip()
         if reaction_key.startswith(":") and reaction_key.endswith(":"):
-            reaction_key = reaction_key[1:-1]
+            reaction_key = reaction_key[1:-1].strip()
         if not reaction_key:
             await interaction.response.send_message("リアクションを指定してください（絵文字または :name:）。", ephemeral=True)
             return
-        if len(reaction_key) > 1 and not reaction_key.isascii():
-            reaction_key = demojize(reaction_key, delimiters=("", "")).strip(":")
+        # 保存形式は Unicode 絵文字に統一（ASCII alias なら emojize で変換、非 ASCII はそのまま）
+        if reaction_key.isascii():
+            emoji_char = emojize(f":{reaction_key}:", language="alias")
+            if emoji_char and emoji_char != f":{reaction_key}:":
+                reaction_key = emoji_char
         upload_store.set_reaction_upload(interaction.guild_id, reaction_key, name)
         await interaction.response.send_message(f"リアクション `{reaction_key}` で `{name}` が再生されるように設定しました。", ephemeral=True)
 
@@ -513,7 +540,7 @@ class Voice(commands.Cog):
             reaction_keys = upload_store.list_reaction_keys_for_upload(interaction.guild_id, name)
             emoji_parts = []
             for rk in reaction_keys:
-                if not rk.isascii() and len(rk) <= 2:
+                if not rk.isascii():
                     emoji_parts.append(rk)
                 else:
                     try:
@@ -612,11 +639,11 @@ class Voice(commands.Cog):
                     continue
                 for rk in upload_store.list_reaction_keys_for_upload(message.guild.id, upload_name):
                     try:
-                        if not rk.isascii() and len(rk) <= 2:
+                        if not rk.isascii():
                             await message.add_reaction(rk)
                             break
-                        emoji_char = emojize(":" + rk + ":", language="alias")
-                        if emoji_char and emoji_char != ":" + rk + ":":
+                        emoji_char = emojize(f":{rk}:", language="alias")
+                        if emoji_char and emoji_char != f":{rk}:":
                             await message.add_reaction(emoji_char)
                             break
                         for em in message.guild.emojis:
@@ -625,21 +652,18 @@ class Voice(commands.Cog):
                                 break
                     except (discord.HTTPException, ValueError):
                         pass
-            # 本文にアップロード設定の絵文字（Unicode や :name:）が含まれるときもリアクションを付ける
+            # 本文にアップロード設定の絵文字（Unicode や :name:）が含まれるときもリアクションを付ける（後方互換: ASCII alias と variation selector 吸収）
             for rk, _ in upload_store.list_all_reaction_uploads(message.guild.id):
                 try:
-                    if not rk.isascii() and len(rk) <= 2:
-                        if rk in content_raw:
-                            await message.add_reaction(rk)
+                    if not self._content_contains_reaction(content_raw, rk):
+                        continue
+                    if not rk.isascii():
+                        await message.add_reaction(rk)
                     else:
-                        colon_name = ":" + rk + ":"
-                        if colon_name in content_raw:
-                            try:
-                                ch = emojize(colon_name, language="alias")
-                                if ch and ch != colon_name:
-                                    await message.add_reaction(ch)
-                            except Exception:
-                                pass
+                        emoji_char = emojize(f":{rk}:", language="alias")
+                        if emoji_char and emoji_char != f":{rk}:":
+                            await message.add_reaction(emoji_char)
+                        else:
                             for em in message.guild.emojis:
                                 if em.name == rk:
                                     await message.add_reaction(em)
@@ -678,8 +702,8 @@ class Voice(commands.Cog):
             self.play_atsumori(vc)
             return
         key_unicode = demojize(str(emoji), delimiters=("", "")).strip(":")
-        # ユーザーアップロード音声（/set_reaction_files で紐付けたもの）を優先
-        for rk in (key_unicode, emoji_name):
+        # ユーザーアップロード音声（/set_reaction_files で紐付けたもの）を優先。Unicode 保存と alias 保存の両方に照合する。
+        for rk in (str(emoji), key_unicode, emoji_name):
             upload_name = upload_store.get_reaction_upload(vc.guild.id, rk)
             if upload_name:
                 path = upload_store.get_upload_path(vc.guild.id, upload_name)
